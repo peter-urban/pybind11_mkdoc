@@ -417,14 +417,16 @@ def read_args(args):
         if "LIBCLANG_PATH" in os.environ:
             library_file = os.environ["LIBCLANG_PATH"]
             if os.path.isfile(library_file):
-                cindex.Config.set_library_file(library_file)
+                if not cindex.Config.loaded:
+                    cindex.Config.set_library_file(library_file)
             else:
                 msg = "Failed to find libclang.dll! Set the LIBCLANG_PATH environment variable to provide a path to it."
                 raise FileNotFoundError(msg)
         elif cindex.Config.library_path is None:
             library_file = ctypes.util.find_library("libclang.dll")
             if library_file is not None:
-                cindex.Config.set_library_file(library_file)
+                if not cindex.Config.loaded:
+                    cindex.Config.set_library_file(library_file)
     elif platform.system() == "Linux":
         # LLVM switched to a monolithical setup that includes everything under
         # /usr/lib/llvm{version_number}/. We glob for the library and select
@@ -443,10 +445,20 @@ def read_args(args):
             key=folder_version,
         )
 
+        # Check conda environment for libclang
+        conda_libclang = None
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            for candidate in ["libclang.so", "libclang.so.1"]:
+                path = os.path.join(conda_prefix, "lib", candidate)
+                if os.path.exists(path):
+                    conda_libclang = path
+                    break
+
         # Ability to override LLVM/libclang paths
         if "LLVM_DIR_PATH" in os.environ:
             llvm_dir = os.environ["LLVM_DIR_PATH"]
-        elif llvm_dir is None and cindex.Config.library_path is None:
+        elif llvm_dir is None and conda_libclang is None and cindex.Config.library_path is None:
             msg = (
                 "Failed to find a LLVM installation providing the file "
                 "/usr/lib{32,64}/llvm-{VER}/lib/libclang.so.1. Make sure that "
@@ -461,9 +473,14 @@ def read_args(args):
             raise FileNotFoundError(msg)
 
         if "LIBCLANG_PATH" in os.environ:
-            cindex.Config.set_library_file(os.environ["LIBCLANG_PATH"])
+            if not cindex.Config.loaded:
+                cindex.Config.set_library_file(os.environ["LIBCLANG_PATH"])
         elif cindex.Config.library_path is None:
-            cindex.Config.set_library_file(os.path.join(llvm_dir, "lib", "libclang.so.1"))
+            if not cindex.Config.loaded:
+                if conda_libclang:
+                    cindex.Config.set_library_file(conda_libclang)
+                elif llvm_dir:
+                    cindex.Config.set_library_file(os.path.join(llvm_dir, "lib", "libclang.so.1"))
 
         cpp_dirs = []
 
@@ -489,6 +506,14 @@ def read_args(args):
             cpp_dirs.append(
                 max(glob(os.path.join(llvm_dir, "lib", "clang", "*", "include")), default=None, key=folder_version)
             )
+        elif conda_prefix:
+            conda_clang_include = max(
+                glob(os.path.join(conda_prefix, "lib", "clang", "*", "include")),
+                default=None,
+                key=folder_version,
+            )
+            if conda_clang_include:
+                cpp_dirs.append(conda_clang_include)
 
         cpp_dirs.append(f"/usr/include/{platform.machine()}-linux-gnu")
         cpp_dirs.append("/usr/include")
@@ -524,6 +549,10 @@ def extract_all(args):
 
     for _i in range(job_count):
         job_semaphore.acquire()
+
+    # Release the semaphore slots so extract_all can be called again
+    for _i in range(job_count):
+        job_semaphore.release()
 
     return output
 
