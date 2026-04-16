@@ -1,5 +1,6 @@
 # Build artifacts from generating cmake files
 cmake/build
+output/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
