@@ -406,7 +406,7 @@ def read_args(args):
         sdk_dir = dev_path + "Platforms/MacOSX.platform/Developer/SDKs"
         libclang = lib_dir + "libclang.dylib"
 
-        if os.path.exists(libclang):
+        if cindex.Config.library_path is None and os.path.exists(libclang):
             cindex.Config.set_library_path(os.path.dirname(libclang))
 
         if os.path.exists(sdk_dir):
@@ -421,7 +421,7 @@ def read_args(args):
             else:
                 msg = "Failed to find libclang.dll! Set the LIBCLANG_PATH environment variable to provide a path to it."
                 raise FileNotFoundError(msg)
-        else:
+        elif cindex.Config.library_path is None:
             library_file = ctypes.util.find_library("libclang.dll")
             if library_file is not None:
                 cindex.Config.set_library_file(library_file)
@@ -446,7 +446,7 @@ def read_args(args):
         # Ability to override LLVM/libclang paths
         if "LLVM_DIR_PATH" in os.environ:
             llvm_dir = os.environ["LLVM_DIR_PATH"]
-        elif llvm_dir is None:
+        elif llvm_dir is None and cindex.Config.library_path is None:
             msg = (
                 "Failed to find a LLVM installation providing the file "
                 "/usr/lib{32,64}/llvm-{VER}/lib/libclang.so.1. Make sure that "
@@ -461,11 +461,10 @@ def read_args(args):
             raise FileNotFoundError(msg)
 
         if "LIBCLANG_PATH" in os.environ:
-            libclang_dir = os.environ["LIBCLANG_PATH"]
-        else:
-            libclang_dir = os.path.join(llvm_dir, "lib", "libclang.so.1")
+            cindex.Config.set_library_file(os.environ["LIBCLANG_PATH"])
+        elif cindex.Config.library_path is None:
+            cindex.Config.set_library_file(os.path.join(llvm_dir, "lib", "libclang.so.1"))
 
-        cindex.Config.set_library_file(libclang_dir)
         cpp_dirs = []
 
         if "-stdlib=libc++" not in args:
@@ -475,11 +474,18 @@ def read_args(args):
                 max(glob(f"/usr/include/{platform.machine()}-linux-gnu/c++/*"), default=None, key=folder_version)
             )
         else:
+            if llvm_dir is None:
+                msg = (
+                    "-stdlib=libc++ has been specified, but no LLVM "
+                    "installation has been found on the system."
+                )
+                raise FileNotFoundError(msg)
+
             cpp_dirs.append(os.path.join(llvm_dir, "include", "c++", "v1"))
 
         if "CLANG_INCLUDE_DIR" in os.environ:
             cpp_dirs.append(os.environ["CLANG_INCLUDE_DIR"])
-        else:
+        elif llvm_dir is not None:
             cpp_dirs.append(
                 max(glob(os.path.join(llvm_dir, "lib", "clang", "*", "include")), default=None, key=folder_version)
             )
