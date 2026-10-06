@@ -46,6 +46,10 @@ pybind11-mkdoc = "pybind11_mkdoc:main"
 include = ["tests/**/*.py", "tests/**/*.h", ".gitignore"]
 
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+
 [tool.mypy]
 files = ["pybind11_mkdoc"]
 strict = true
@@ -59,3 +63,37 @@ ignore_missing_imports = true
 
 [tool.ruff.lint]
 ignore = ["S110", "BLE", "PLW2901", "PLW0603", "INP001"]
+
+
+# ---------------------------------------------------------------------------
+# pixi (conda packaging / development environments)
+# ---------------------------------------------------------------------------
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "themachinethatgoesping"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.pypi-dependencies]
+pybind11_mkdoc = { path = ".", editable = true }
+
+[tool.pixi.dependencies]
+python = ">=3.9"
+flit-core = ">=3.9"
+pip = "*"
+python-clang = "*"
+libclang = "*"
+clangdev = "*"
+pytest = "*"
+pybind11 = "*"
+
+[tool.pixi.feature.build.dependencies]
+rattler-build = ">=0.75.0,<0.76"
+anaconda-client = ">=1.14.1,<2"
+
+[tool.pixi.feature.build.tasks]
+test = "python -m pytest -v tests/"
+build-conda = "rattler-build build --recipe recipe/recipe.yaml --output-dir output"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+build = { features = ["build"], solve-group = "default" }

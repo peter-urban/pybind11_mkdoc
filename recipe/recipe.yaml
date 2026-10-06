@@ -1,0 +1,57 @@
+schema_version: 1
+
+context:
+  version: "3.0.0"  # updated by misc/push_to_conda.sh from pybind11_mkdoc/__init__.py
+
+package:
+  name: pybind11_mkdoc
+  version: ${{ version }}
+
+source:
+  path: ../
+  filter:
+    exclude:
+      - output/**
+      - .pixi/**
+      - .venv/**
+
+build:
+  noarch: python
+  python:
+    entry_points:
+      - pybind11-mkdoc = pybind11_mkdoc:main
+  script: python -m pip install . --no-deps --no-build-isolation -vv
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+    - flit-core >=3.9
+  run:
+    - python >=3.9
+    # Python bindings (clang.cindex), the shared library and the Clang
+    # resource headers (stddef.h & co.) so the tool works out of the box.
+    - python-clang
+    - libclang
+    - clangdev
+
+tests:
+  - python:
+      imports:
+        - pybind11_mkdoc
+      pip_check: false
+  - script:
+      - pytest -v tests/
+    requirements:
+      run:
+        - pytest
+        - pybind11
+    files:
+      source:
+        - tests/
+
+about:
+  homepage: https://github.com/pybind/pybind11_mkdoc
+  summary: "Generate documentation bindings for pybind11 modules."
+  license: MIT
+  license_file: LICENSE
