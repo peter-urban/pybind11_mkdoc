@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pybind11_mkdoc.mkdoc_lib import mkdoc
 
-__version__ = "3.0.0"
+__version__ = "3.0.0+libclang0"
 
 
 def _append_include_dir(

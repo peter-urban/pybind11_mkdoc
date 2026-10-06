@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  version: "3.0.0"  # updated by misc/push_to_conda.sh from pybind11_mkdoc/__init__.py
+  version: "3.0.0+libclang0"  # updated by misc/push_to_conda.sh from pybind11_mkdoc/__init__.py
 
 package:
   name: pybind11_mkdoc
