@@ -12,7 +12,9 @@ authors = [
     { name = "Wenzel Jakob", email = "wenzel.jakob@epfl.ch" }
 ]
 urls.homepage = "https://github.com/pybind/pybind11_mkdoc"
-dependencies = ["clang"]
+dependencies = []
+optional-dependencies.clang = ["clang"]
+optional-dependencies.libclang = ["libclang"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3.9",

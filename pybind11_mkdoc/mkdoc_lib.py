@@ -643,7 +643,7 @@ def read_args(args: list[str]) -> tuple[list[str], list[str]]:
                 raise FileNotFoundError(msg)
             if not cindex.Config.loaded:
                 cindex.Config.set_library_file(library_file)
-        else:
+        elif cindex.Config.library_path is None:
             for libclang in (
                 dev_path + "Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib",
                 clt_path + "usr/lib/libclang.dylib",
@@ -678,7 +678,7 @@ def read_args(args: list[str]) -> tuple[list[str], list[str]]:
                 raise FileNotFoundError(msg)
             if not cindex.Config.loaded:
                 cindex.Config.set_library_file(library_file)
-        else:
+        elif cindex.Config.library_path is None:
             found_library = ctypes.util.find_library("libclang.dll")
             if found_library is not None and not cindex.Config.loaded:
                 cindex.Config.set_library_file(found_library)
@@ -697,10 +697,23 @@ def read_args(args: list[str]) -> tuple[list[str], list[str]]:
             key=_folder_version,
         )
 
+        # The libclang conda package ships the shared library and the Clang
+        # resource headers under the environment prefix rather than in a
+        # system LLVM directory.
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        conda_libclang: str | None = None
+        if conda_prefix is not None:
+            for candidate in ("libclang.so", "libclang.so.1"):
+                candidate_path = str(PurePosixPath(conda_prefix) / "lib" / candidate)
+                if os.path.exists(candidate_path):
+                    conda_libclang = candidate_path
+                    break
+
         # Ability to override LLVM/libclang paths
         if "LLVM_DIR_PATH" in os.environ:
             llvm_dir = os.environ["LLVM_DIR_PATH"]
 
+        libclang_file: str | None = None
         if "LIBCLANG_PATH" in os.environ:
             libclang_file = os.environ["LIBCLANG_PATH"]
             if not os.path.isfile(libclang_file):
@@ -709,6 +722,11 @@ def read_args(args: list[str]) -> tuple[list[str], list[str]]:
                     "Set it to the path of libclang.so.1."
                 )
                 raise FileNotFoundError(msg)
+        elif cindex.Config.library_path is not None:
+            # The libclang package pre-configures its own bundled library.
+            libclang_file = None
+        elif conda_libclang is not None:
+            libclang_file = conda_libclang
         elif llvm_dir is not None:
             libclang_file = str(PurePosixPath(llvm_dir) / "lib" / "libclang.so.1")
         else:
@@ -725,7 +743,7 @@ def read_args(args: list[str]) -> tuple[list[str], list[str]]:
             )
             raise FileNotFoundError(msg)
 
-        if not cindex.Config.loaded:
+        if libclang_file is not None and not cindex.Config.loaded:
             cindex.Config.set_library_file(libclang_file)
         cpp_dirs: list[str | None] = []
 
@@ -746,16 +764,29 @@ def read_args(args: list[str]) -> tuple[list[str], list[str]]:
 
         if "CLANG_INCLUDE_DIR" in os.environ:
             cpp_dirs.append(os.environ["CLANG_INCLUDE_DIR"])
-        elif llvm_dir is not None:
-            cpp_dirs.append(
-                max(
+        else:
+            # Clang's own resource headers (stddef.h & co.). Prefer the conda
+            # environment (consistent with the libclang selection above) and
+            # fall back to the system LLVM installation.
+            for include_root in (conda_prefix, llvm_dir):
+                if include_root is None:
+                    continue
+                clang_include = max(
                     glob(
-                        str(PurePosixPath(llvm_dir) / "lib" / "clang" / "*" / "include")
+                        str(
+                            PurePosixPath(include_root)
+                            / "lib"
+                            / "clang"
+                            / "*"
+                            / "include"
+                        )
                     ),
                     default=None,
                     key=_folder_version,
                 )
-            )
+                if clang_include is not None:
+                    cpp_dirs.append(clang_include)
+                    break
 
         cpp_dirs.append(f"/usr/include/{platform.machine()}-linux-gnu")
         cpp_dirs.append("/usr/include")

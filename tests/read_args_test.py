@@ -14,6 +14,22 @@ def config_calls(monkeypatch):
     """Record cindex.Config.set_library_* calls instead of configuring libclang."""
     calls = {}
     monkeypatch.setattr(cindex.Config, "loaded", False)
+    monkeypatch.setattr(cindex.Config, "library_path", None)
+    monkeypatch.setattr(
+        cindex.Config, "set_library_file", lambda p: calls.__setitem__("file", p)
+    )
+    monkeypatch.setattr(
+        cindex.Config, "set_library_path", lambda p: calls.__setitem__("path", p)
+    )
+    return calls
+
+
+@pytest.fixture
+def libclang_package(monkeypatch):
+    """Simulate the ``libclang`` package, which pre-sets ``Config.library_path``."""
+    calls = {}
+    monkeypatch.setattr(cindex.Config, "loaded", False)
+    monkeypatch.setattr(cindex.Config, "library_path", "/pkg/clang/native")
     monkeypatch.setattr(
         cindex.Config, "set_library_file", lambda p: calls.__setitem__("file", p)
     )
@@ -30,6 +46,7 @@ def clean_env(monkeypatch):
         "LLVM_DIR_PATH",
         "CLANG_INCLUDE_DIR",
         "CPP_INCLUDE_DIRS",
+        "CONDA_PREFIX",
     ]:
         monkeypatch.delenv(var, raising=False)
 
@@ -98,6 +115,33 @@ def test_linux_libclang_path_missing_raises(monkeypatch, tmp_path):
         mkdoc_lib.read_args(["foo.h"])
 
 
+@pytest.mark.usefixtures("linux", "clean_env")
+def test_linux_libclang_package_without_llvm_dir(monkeypatch, libclang_package):
+    # The libclang package ships its own library (Config.library_path is set).
+    # Without a system LLVM or env overrides, it must be used as-is: no error
+    # and no attempt to reconfigure libclang.
+    monkeypatch.setattr(mkdoc_lib, "glob", lambda _pattern: [])
+
+    _, filenames = mkdoc_lib.read_args(["foo.h"])
+
+    assert "file" not in libclang_package
+    assert filenames == ["foo.h"]
+
+
+@pytest.mark.usefixtures("linux", "clean_env")
+def test_linux_conda_libclang_detected(monkeypatch, config_calls, tmp_path):
+    lib = tmp_path / "lib" / "libclang.so"
+    lib.parent.mkdir()
+    lib.touch()
+    monkeypatch.setenv("CONDA_PREFIX", str(tmp_path))
+    monkeypatch.setattr(mkdoc_lib, "glob", lambda _pattern: [])
+
+    _, filenames = mkdoc_lib.read_args(["foo.h"])
+
+    assert config_calls["file"] == str(lib)
+    assert filenames == ["foo.h"]
+
+
 @pytest.mark.usefixtures("darwin", "clean_env")
 def test_macos_xcode_preferred(monkeypatch, config_calls):
     existing = {
@@ -153,6 +197,22 @@ def test_macos_libclang_path_env_missing_raises(monkeypatch, tmp_path):
         mkdoc_lib.read_args(["foo.h"])
 
 
+@pytest.mark.usefixtures("darwin", "clean_env")
+def test_macos_libclang_package_skips_discovery(monkeypatch, libclang_package):
+    # The bundled libclang library must not be overridden by an Xcode toolchain.
+    existing = {
+        XCODE + "Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib",
+        CLT + "SDKs",
+    }
+    monkeypatch.setattr(os.path, "exists", lambda p: p in existing)
+    monkeypatch.setattr(os, "walk", fake_walk(["MacOSX.sdk"]))
+
+    parameters, _ = mkdoc_lib.read_args(["foo.h"])
+
+    assert "path" not in libclang_package
+    assert "-isysroot" in parameters
+
+
 @pytest.mark.usefixtures("windows", "clean_env")
 def test_windows_libclang_path_env(monkeypatch, config_calls, tmp_path):
     lib = tmp_path / "libclang.dll"
@@ -171,6 +231,19 @@ def test_windows_libclang_path_env_missing_raises(monkeypatch, tmp_path):
 
     with pytest.raises(FileNotFoundError):
         mkdoc_lib.read_args(["foo.h"])
+
+
+@pytest.mark.usefixtures("windows", "clean_env")
+def test_windows_libclang_package_skips_discovery(monkeypatch, libclang_package):
+    # The bundled library must be used without probing for a system libclang.
+    monkeypatch.setattr(
+        mkdoc_lib.ctypes.util, "find_library", lambda _n: "C:/libclang.dll"
+    )
+
+    _, filenames = mkdoc_lib.read_args(["foo.h"])
+
+    assert "file" not in libclang_package
+    assert filenames == ["foo.h"]
 
 
 @pytest.mark.usefixtures("darwin", "clean_env", "config_calls")

@@ -6,10 +6,33 @@ This tool processes a sequence of C/C++ headers and extracts comments that can
 be referenced to generate docstrings in pybind11 binding code.
 
 
-To install the latest development version:
+## Installation
+
+`pybind11_mkdoc` relies on the `clang.cindex` Python bindings, which are
+provided by one of two mutually exclusive PyPI packages. Install exactly one of
+them through the matching extra:
+
+* `clang` — uses the `libclang` shared library already present on the system
+  (a matching system LLVM/Clang installation is required).
+* `libclang` — bundles its own `libclang` shared library, so no system LLVM
+  installation is needed.
 
 ```bash
-python -m pip install git+https://github.com/pybind/pybind11_mkdoc.git
+# Use the system libclang (requires LLVM/Clang to be installed):
+python -m pip install "pybind11_mkdoc[clang] @ git+https://github.com/pybind/pybind11_mkdoc.git"
+
+# Or bundle libclang (no system LLVM required):
+python -m pip install "pybind11_mkdoc[libclang] @ git+https://github.com/pybind/pybind11_mkdoc.git"
+```
+
+`pybind11_mkdoc` is also available as a conda package that ships the clang
+backend, from the
+[themachinethatgoesping](https://anaconda.org/themachinethatgoesping) channel:
+
+```bash
+pixi add --channel themachinethatgoesping --channel conda-forge pybind11_mkdoc
+# or
+conda install -c themachinethatgoesping -c conda-forge pybind11_mkdoc
 ```
 
 ## Usage
@@ -113,23 +136,19 @@ pybind11_mkdoc(
 ```
 ## Limitations
 
-This tool supports Linux and macOS for Python versions 3.9 to 3.14.  Also, it
-requires Clang/LLVM to be installed.
+This tool supports Linux and macOS for Python versions 3.9 to 3.14.  It also
+requires a `libclang` shared library: either provide one through the system
+(and install the `clang` extra) or install the self-contained `libclang` extra.
 
 
 ## Testing
 
-Install the packages `pytest`, `pytest-forked` and `pybind11`:
+Install this project together with a clang backend and the test dependencies:
 ```
-python3 -m pip install pytest pytest-forked pybind11
-```
-
-Next, install this project:
-```
-python3 -m pip install .
+python3 -m pip install ".[clang]" pytest pybind11
 ```
 
-And execute the tests (forked)
+And execute the tests:
 ```
-python3 -m pytest --forked
+python3 -m pytest
 ```
