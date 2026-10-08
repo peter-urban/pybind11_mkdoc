@@ -75,6 +75,18 @@ def get_cmake_dir() -> Path:
     raise ImportError(msg)
 
 
+def get_meson_dir() -> Path:
+    """
+    Return the path to the pybind11_mkdoc Meson integration directory.
+    """
+    meson_installed_path = Path(__file__).parent / "share" / "meson" / "pybind11_mkdoc"
+    if meson_installed_path.exists():
+        return meson_installed_path
+
+    msg = "pybind11_mkdoc meson files not found."
+    raise ImportError(msg)
+
+
 def main() -> int:
     """
     Entry point for the `pybind11_mkdoc` console script.
